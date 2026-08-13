@@ -56,6 +56,52 @@ router.get('/trigger/resource-spike', (req, res) => {
 });
 
 /**
+ * Scenario 5 — Simple Mathematical Error
+ * Endpoint: GET /api/trigger/math-error
+ */
+router.get('/trigger/math-error', (req, res) => {
+  try {
+    const numerator = 42;
+    const denominator = 0;
+    if (denominator === 0) {
+      throw new Error('DivisionByZero: Cannot divide 42 by 0 in discount calculator at src/routes/triggers.js:72');
+    }
+    res.json({ success: true, result: numerator / denominator });
+  } catch (err) {
+    logger.error('math_engine', err.message);
+    res.status(500).json({
+      status: 'error',
+      scenario: 'Scenario 5 - Mathematical Division By Zero',
+      targetFile: 'src/routes/triggers.js:72',
+      error: err.message
+    });
+  }
+});
+
+/**
+ * Scenario 6 — Coding / Syntax-style Error
+ * Endpoint: GET /api/trigger/syntax-error
+ */
+router.get('/trigger/syntax-error', (req, res) => {
+  try {
+    const code = 'function brokenTotal(items) { return items.reduce((sum, item) => sum + item.price, 0; }';
+    // Intentionally compile invalid JavaScript so the dashboard can explain a coding mistake.
+    // eslint-disable-next-line no-new-func
+    new Function(code);
+    res.json({ success: true });
+  } catch (err) {
+    const logMsg = `SyntaxError: missing ) after argument list in brokenTotal reducer at src/routes/triggers.js:96`;
+    logger.error('code_compiler', `${logMsg} - ${err.message}`);
+    res.status(500).json({
+      status: 'error',
+      scenario: 'Scenario 6 - Coding Syntax Error',
+      targetFile: 'src/routes/triggers.js:96',
+      error: logMsg
+    });
+  }
+});
+
+/**
  * System Status & Metrics API
  * Endpoint: GET /api/status
  */

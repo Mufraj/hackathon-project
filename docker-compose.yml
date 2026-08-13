@@ -1,6 +1,21 @@
 version: '3.8'
 
 services:
+  logging-server:
+    image: node:20-alpine
+    container_name: fixly-logging-server
+    working_dir: /app
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - GROK_API_KEY=${GROK_API_KEY:-}
+      - GROK_MODEL=${GROK_MODEL:-grok-2-latest}
+    volumes:
+      - ./logging-server:/app
+    command: sh -c "npm install && npm start"
+
   target-app:
     build:
       context: .
@@ -13,8 +28,11 @@ services:
       - PORT=3000
       - LOG_FILE=/var/log/target_app/app.log
       - NODE_ENV=production
+      - LOG_SERVER_URL=http://logging-server:4000
     volumes:
       - ./logs:/var/log/target_app
+    depends_on:
+      - logging-server
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 10s

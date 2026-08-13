@@ -5,7 +5,11 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "start:logging": "npm --prefix logging-server start",
+    "dev:logging": "npm --prefix logging-server run dev",
+    "demo:trigger": "node scripts/trigger-demo.js",
+    "demo": "node scripts/demo-runner.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

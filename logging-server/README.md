@@ -1,87 +1,40 @@
-# Fixly Target App & Logging Server MVP
+# Fixly Logging Server + AI Dashboard
 
-This repository contains the existing Fixly target application (`target-app`) and a separate `logging-server` that captures and streams live errors from the target app.
+Express + Socket.IO service that receives logs from the target app, persists them to `logs/logs.txt`, streams updates to the browser, and resolves errors with a server-side Grok API key.
 
-## Architecture
+## Run
 
-```text
-Existing Vercel App
-http://localhost:3000
-
-        |
-        | HTTPS POST error event
-        v
-
-Logging Server (http://localhost:4000)
-
-        |
-        +--> persist logs (logs/logs.txt)
-        |
-        +--> WebSocket live stream
-        |
-        v
-
-Live Log Dashboard (http://localhost:4000)
+```bash
+npm install
+cp .env.example .env
+# Optional: set GROK_API_KEY=xai-... in .env
+npm start
 ```
 
-## How the Error Forwarding Works
+Dashboard: <http://localhost:4000>
 
-When a custom test error is triggered in the target app, the error is caught by its express routes and passed to `src/utils/logger.js`. The logger writes the error to `logs/app.log` locally and immediately forwards it via an HTTP POST request to the remote Logging Server (`LOG_SERVER_URL/api/logs`).
+## Environment
 
-## Environment Variables
-
-### Target App (Root)
-Create a `.env` in the root (optional):
-```env
-LOG_SERVER_URL=http://localhost:4000
-```
-*(If deployed on Vercel, set `LOG_SERVER_URL` in the Vercel project settings).*
-
-### Logging Server (`logging-server/`)
-Create a `.env` in the `logging-server` directory (see `logging-server/.env.example`):
 ```env
 PORT=4000
+GROK_API_KEY=
+GROK_MODEL=grok-2-latest
 ```
 
-## Setup & Local Development
+`GROK_API_KEY` is only read by `server.js`/backend services and is never embedded in frontend JavaScript. If the key is absent or the AI request fails, the server returns deterministic fallback resolutions for a reliable hackathon demo.
 
-### 1. Run the Logging Server
-```bash
-cd logging-server
-npm install
-npm run dev
-```
-- API is available at `http://localhost:4000/api/logs`
-- Dashboard is available at `http://localhost:4000`
+## Endpoints
 
-### 2. Run the Target App
-In a new terminal window:
-```bash
-# In the root directory
-npm install
-LOG_SERVER_URL=http://localhost:4000 npm run dev
-```
-- Target App is available at `http://localhost:3000`
+- `POST /api/logs` — store and broadcast a log.
+- `GET /api/logs` — read recent logs.
+- `POST /api/logs/:id/resolve` — resolve via Grok or fallback resolver.
+- `POST /api/logs/:id/mark-resolved` — manually mark a card resolved.
+- `POST /api/logs/:id/reopen` — reopen a resolved card.
+- `GET /logs/logs.txt` — raw file-backed log history.
+- `GET /health` — server status and Grok configuration flag.
 
-## API Endpoints (Logging Server)
+## Socket.IO events
 
-- **`POST /api/logs`**: Accepts JSON logs (level, type, message, stack, source, timestamp). Validates and broadcasts.
-- **`GET /api/logs`**: Returns the recent 100 log entries as JSON.
-- **`GET /logs/logs.txt`**: Returns the raw plain-text log file.
-- **`GET /health`**: Returns `{ "status": "ok" }`.
-
-## WebSocket Endpoint
-
-Connect to the Socket.IO server at the logging server root (e.g. `http://localhost:4000`).
-- Event **`initial_logs`**: Emitted on connection, provides recent logs array.
-- Event **`new_log`**: Emitted immediately when a new POST log is received.
-
-## Deployment & Limitations
-
-The Logging Server is built with Node.js and can be deployed on platforms like **Render, Heroku, or AWS**.
-
-### ⚠️ Persistence Limitations
-
-**IMPORTANT:** The MVP currently persists logs to `logs/logs.txt` using the local filesystem. If you deploy the logging server to an ephemeral filesystem (like Vercel, Heroku, or Render's free tier), the `logs.txt` file will be **lost and reset every time the server restarts or sleeps**. 
-
-**Future Production Improvement:** For true persistence in production, the file-based persistence must be replaced with a real database (e.g., PostgreSQL, MongoDB, or Redis).
+- `initial_logs` — sent on dashboard connection.
+- `new_log` — sent when a target app log arrives.
+- `log_updated` — sent when status/resolution changes.

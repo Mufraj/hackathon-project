@@ -1,92 +1,124 @@
-# Fixly Remote Target Demo App (Docker Setup)
+# Fixly AI Error Logging Demo
 
-This repository contains the complete **Fixly Remote Target Demo Application** with Docker containerization, intentional error triggers, and SSH log streaming integration for Fixly self-healing monitoring.
+A hackathon-ready Node.js demo with two cooperating apps:
 
----
+- **Target app** (`http://localhost:3000`) intentionally generates math, coding, database, promise, and resource errors.
+- **Logging server + dashboard** (`http://localhost:4000`) captures forwarded logs live, stores them on disk, and lets you resolve each error with a server-side Grok API key.
 
-## 🚀 Quickstart: Run with Docker
+The dashboard never exposes `GROK_API_KEY` to browser JavaScript. If Grok is not configured or fails, the backend returns a polished local fallback so the live demo still shows root cause, suggested fix, confidence, and resolution status.
 
-### Option 1: Using Docker Compose (Recommended)
-
-```bash
-# 1. Clone the repository on your VPS / Server
-git clone <YOUR_REPO_URL> target_app
-cd target_app
-
-# 2. Build and start container in detached mode
-docker compose up -d --build
-
-# 3. Check container status & logs
-docker compose ps
-docker compose logs -f
-```
-
-### Option 2: Using Docker CLI Directly
+## One-command local demo
 
 ```bash
-# Build the Docker image
-docker build -t fixly-target-app .
+npm install
+npm --prefix logging-server install
 
-# Run the container with log volume mapping
-docker run -d \
-  --name fixly-target-app \
-  -p 3000:3000 \
-  -v $(pwd)/logs:/var/log/target_app \
-  --restart unless-stopped \
-  fixly-target-app
+# Optional: enable real Grok/xAI resolution
+# macOS/Linux: export GROK_API_KEY=xai-...
+# Windows PowerShell: $env:GROK_API_KEY="xai-..."
+
+npm run demo
 ```
 
----
+Then open:
 
-## 🌐 Application Dashboard & Health
+- Target app control panel: <http://localhost:3000>
+- AI error dashboard: <http://localhost:4000>
 
-Once deployed, access the web control panel in your browser:
+`npm run demo` starts both servers and automatically triggers sample errors. On the dashboard, click **Resolve with Grok** on any error card.
 
-- **Web Dashboard**: `http://<YOUR_VPS_IP>:3000`
-- **Healthcheck**: `http://<YOUR_VPS_IP>:3000/health`
-- **System Metrics**: `http://<YOUR_VPS_IP>:3000/api/status`
-- **Live Logs API**: `http://<YOUR_VPS_IP>:3000/api/logs`
+## Manual local run
 
----
+Terminal 1:
 
-## ⚡ Intentional Error Scenarios & Endpoints
-
-| Scenario | Trigger Endpoint | Target File & Line | Log Output Format |
-| :--- | :--- | :--- | :--- |
-| **1. DB Pool Exhaustion** | `GET /api/trigger/db-timeout` | [src/services/database.js:42](file:///f:/target/src/services/database.js#L42) | `ERROR [db_service]: Connection pool timeout after 30000ms. Max connections (10) reached at src/services/database.js:42` |
-| **2. Null Reference TypeError** | `GET /api/trigger/null-ref` | [src/routes/user_profile.js:88](file:///f:/target/src/routes/user_profile.js#L88) | `ERROR [user_profile]: TypeError: Cannot read properties of undefined (reading 'account_status') at src/routes/user_profile.js:88` |
-| **3. Unhandled Promise Rejection** | `GET /api/trigger/unhandled-rejection` | [src/services/payment_gateway.js:104](file:///f:/target/src/services/payment_gateway.js#L104) | `ERROR [payment_gateway]: UnhandledPromiseRejection: Invalid or expired API signature token at src/services/payment_gateway.js:104` |
-| **4. CPU / Resource Spike** | `GET /api/trigger/resource-spike` | N/A (System Vitals) | Spikes CPU > 90% for 15 seconds to test SSH Vitals parser |
-
----
-
-## 🧪 Running Automated Error Triggers
-
-### On Linux / VPS (Bash):
 ```bash
-chmod +x trigger_test_suite.sh
-./trigger_test_suite.sh localhost:3000
+cd logging-server
+cp .env.example .env
+# edit .env and set GROK_API_KEY if available
+npm install
+npm start
 ```
 
-### On Windows (PowerShell):
-```powershell
-.\trigger_test_suite.ps1 -TargetHost "localhost:3000"
-```
+Terminal 2:
 
-### Using cURL Manually:
 ```bash
-curl -X GET http://<SERVER_IP>:3000/api/trigger/db-timeout
-curl -X GET http://<SERVER_IP>:3000/api/trigger/null-ref
-curl -X GET http://<SERVER_IP>:3000/api/trigger/unhandled-rejection
-curl -X GET http://<SERVER_IP>:3000/api/trigger/resource-spike
+npm install
+LOG_SERVER_URL=http://localhost:4000 npm start
 ```
 
----
+Terminal 3:
 
-## 🔧 Fixly SSH Configuration Guide
+```bash
+npm run demo:trigger
+# or: ./trigger_test_suite.sh localhost:3000
+```
 
-Configure your Fixly target host settings with:
+## Docker Compose
 
-- **Target Log Stream Location**: `/var/log/target_app/app.log` (or host mounted `./logs/app.log`)
-- **Port**: `3000`
-- **SSH Key User**: User with read permissions to `/var/log/target_app/app.log` or `./logs/app.log`
+```bash
+# Optional real AI resolution
+export GROK_API_KEY=xai-your-key
+
+docker compose up --build
+```
+
+Services:
+
+- `target-app`: <http://localhost:3000>
+- `logging-server`: <http://localhost:4000>
+
+## Error scenarios
+
+| Scenario | Endpoint | Dashboard source | Demo fix |
+| --- | --- | --- | --- |
+| DB pool exhaustion | `GET /api/trigger/db-timeout` | `db_service` | Release DB clients in `finally`, review pool limits. |
+| Null reference TypeError | `GET /api/trigger/null-ref` | `user_profile` | Guard `req.user` / use optional chaining. |
+| Promise rejection | `GET /api/trigger/unhandled-rejection` | `payment_gateway` | Wrap async calls in `try/catch`, handle expired tokens. |
+| CPU/resource spike | `GET /api/trigger/resource-spike` | target metrics/logs | Offload heavy work and limit concurrency. |
+| Math division by zero | `GET /api/trigger/math-error` | `math_engine` | Validate denominator before division. |
+| Coding syntax error | `GET /api/trigger/syntax-error` | `code_compiler` | Fix missing parenthesis in reducer expression. |
+
+## Dashboard capabilities
+
+- Live Socket.IO updates for new and updated logs.
+- Severity, timestamp, source, status, and raw message display.
+- Filter by level and resolution status.
+- Resolve with Grok via `POST /api/logs/:id/resolve`.
+- Manual **Mark resolved** and **Reopen** actions.
+- File-backed log history in `logging-server/logs/logs.txt`.
+
+## API quick reference
+
+Target app:
+
+- `GET /health`
+- `GET /api/status`
+- `GET /api/logs?limit=40`
+- `GET /api/trigger/db-timeout`
+- `GET /api/trigger/null-ref`
+- `GET /api/trigger/unhandled-rejection`
+- `GET /api/trigger/resource-spike`
+- `GET /api/trigger/math-error`
+- `GET /api/trigger/syntax-error`
+
+Logging server:
+
+- `POST /api/logs` — target app forwards logs here.
+- `GET /api/logs` — dashboard history.
+- `POST /api/logs/:id/resolve` — server-side Grok/fallback resolution.
+- `POST /api/logs/:id/mark-resolved`
+- `POST /api/logs/:id/reopen`
+
+## Environment variables
+
+Root target app:
+
+- `PORT` — default `3000`.
+- `LOG_SERVER_URL` — set to `http://localhost:4000` locally or `http://logging-server:4000` in Docker.
+- `LOG_FILE` — optional local target log file path.
+
+Logging server:
+
+- `PORT` — default `4000`.
+- `GROK_API_KEY` — optional xAI/Grok API key, server-side only.
+- `GROK_MODEL` — optional, default `grok-2-latest`.
